@@ -258,9 +258,9 @@ describe('StatsLine', () => {
       tokenUsage: USAGE,
       contextPressure: { pressureTokens: 32_000, contextWindow: 128_000 },
     })} />)
-    // Context occupancy lives on the composer's ContextMeter ring, not here.
+    // Context occupancy renders in the stats line (local customization).
     expect(view.container.textContent)
-      .toBe('Cache hit 90%| Input 100 tok · Output 5 tok')
+      .toBe('Cache hit 90%| Input 100 tok · Output 5 tok| Context 32K / 128K · 25%')
   })
 
   it('drops every token group when no projection is composed', () => {
