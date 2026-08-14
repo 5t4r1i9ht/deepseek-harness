@@ -137,7 +137,7 @@ describe('formatters', () => {
 })
 
 describe('StatsLine', () => {
-  const USAGE = { uncachedInputTokens: 10, outputTokens: 5, cacheReadTokens: 90, cacheWriteTokens: 0 }
+  const USAGE = { uncachedInputTokens: 1_000_000, outputTokens: 500_000, cacheReadTokens: 9_000_000, cacheWriteTokens: 0 }
 
   /** A whole-log sessionStats value: zeros plus overrides. */
   function sessionStats(overrides: Record<string, number>): Record<string, number> {
@@ -168,7 +168,7 @@ describe('StatsLine', () => {
     const view = render(<StatsLine {...props(source)} />)
     // No timing on the fixture: the duration group drops out whole. Tokens come
     // from the projection, so paging the window cannot change them.
-    expect(view.container.textContent).toBe('1 turns · 1 steps| Cache hit 90%| Input 100 tok · Output 5 tok')
+    expect(view.container.textContent).toBe('1 turns · 1 steps| Cache hit 90%| Hit 9.00M · Miss 1.00M · Output 0.50M')
     const empty = makeSource()
     const emptyView = render(<StatsLine {...props(empty.source, {
       tokenUsage: { uncachedInputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
@@ -178,22 +178,22 @@ describe('StatsLine', () => {
   })
 
   it.each([
-    { actual: '98.6%', tokenUsageValue: tokenUsage(986, 14), expected: 'Cache hit 99%' },
-    { actual: '99.1%', tokenUsageValue: tokenUsage(991, 9), expected: 'Cache hit 99%' },
-    { actual: '99.49%', tokenUsageValue: tokenUsage(9_949, 51), expected: 'Cache hit 99%' },
-    { actual: '99.5%', tokenUsageValue: tokenUsage(995, 5), expected: 'Cache hit 99.5%' },
-    { actual: '99.94%', tokenUsageValue: tokenUsage(9_994, 6), expected: 'Cache hit 99.9%' },
+    { actual: '98.6%', tokenUsageValue: tokenUsage(986, 14), expected: 'Cache hit 98.60%' },
+    { actual: '99.1%', tokenUsageValue: tokenUsage(991, 9), expected: 'Cache hit 99.10%' },
+    { actual: '99.49%', tokenUsageValue: tokenUsage(9_949, 51), expected: 'Cache hit 99.49%' },
+    { actual: '99.5%', tokenUsageValue: tokenUsage(995, 5), expected: 'Cache hit 99.50%' },
+    { actual: '99.94%', tokenUsageValue: tokenUsage(9_994, 6), expected: 'Cache hit 99.94%' },
     { actual: '99.95%', tokenUsageValue: tokenUsage(9_995, 5), expected: 'Cache hit 99.95%' },
-    { actual: '99.955%', tokenUsageValue: tokenUsage(19_991, 9), expected: 'Cache hit 99.96%' },
-    { actual: '99.985%', tokenUsageValue: tokenUsage(19_997, 3), expected: 'Cache hit 99.99%' },
-    { actual: '99.995%', tokenUsageValue: tokenUsage(19_999, 1), expected: 'Cache hit 99.995%' },
-    { actual: '99.9975%', tokenUsageValue: tokenUsage(39_999, 1), expected: 'Cache hit 99.998%' },
+    { actual: '99.955%', tokenUsageValue: tokenUsage(19_991, 9), expected: 'Cache hit 99.95%' },
+    { actual: '99.985%', tokenUsageValue: tokenUsage(19_997, 3), expected: 'Cache hit 99.98%' },
+    { actual: '99.995%', tokenUsageValue: tokenUsage(19_999, 1), expected: 'Cache hit 100.00%' },
+    { actual: '99.9975%', tokenUsageValue: tokenUsage(39_999, 1), expected: 'Cache hit 100.00%' },
     {
       actual: 'the closest non-full ratio available from safe integer cumulative counts',
       tokenUsageValue: tokenUsage(Number.MAX_SAFE_INTEGER - 1, 1),
-      expected: 'Cache hit 99.99999999999999%',
+      expected: 'Cache hit 100.00%',
     },
-    { actual: '100%', tokenUsageValue: tokenUsage(10_000, 0), expected: 'Cache hit 100%' },
+    { actual: '100%', tokenUsageValue: tokenUsage(10_000, 0), expected: 'Cache hit 100.00%' },
   ])('formats an actual $actual cache-hit ratio as $expected', ({ tokenUsageValue, expected }) => {
     const { source } = makeSource({ nodes: [assistant(1, 1)] })
     const view = render(<StatsLine {...props(source, { tokenUsage: tokenUsageValue })} />)
@@ -213,7 +213,7 @@ describe('StatsLine', () => {
     expect(view.container.querySelector('[role="tooltip"]')).toBeNull()
     act(() => { vi.advanceTimersByTime(1) })
     expect(view.container.querySelector('[role="tooltip"]')?.textContent)
-      .toBe('1 turns · 1 steps | Cache hit 99.95% | Input 10K tok · Output 1 tok')
+      .toBe('1 turns · 1 steps | Cache hit 99.95% | Hit 0.01M · Miss 0.00M · Output 0.00M')
   })
 
   it('suppresses the tooltip while the row fits without truncation', () => {
@@ -232,7 +232,7 @@ describe('StatsLine', () => {
     }
     const { source } = makeSource({ nodes: [timed] })
     const view = render(<StatsLine {...props(source)} />)
-    expect(view.container.textContent).toContain('LLM 3.8s| TTFT avg 0.8s · 20 tok/s')
+    expect(view.container.textContent).toContain('LLM 3.8s| TTFT 0.8s · TPS 20.0')
   })
 
   it('takes every stats label from the active locale', () => {
@@ -243,7 +243,7 @@ describe('StatsLine', () => {
     const { source } = makeSource({ nodes: [timed] })
     const view = render(<StatsLine {...props(source, { tokenUsage: tokenUsage(9_995, 5) })} t={t} />)
     expect(view.container.textContent)
-      .toBe('1 轮 · 1 步| LLM 3.8秒| 首 token 平均 0.8秒 · 20 tok/s| 缓存命中 99.95%| 输入 10K tok · 输出 1 tok')
+      .toBe('1 轮 · 1 步| LLM 3.8秒| TTFT 0.8s · TPS 20.0| 缓存命中 99.95%| 输入 hit 0.01M · miss 0.00M · 输出 0.00M')
   })
 
   it('renders without ResizeObserver support', () => {
@@ -260,7 +260,7 @@ describe('StatsLine', () => {
     })} />)
     // Context occupancy renders in the stats line (local customization).
     expect(view.container.textContent)
-      .toBe('Cache hit 90%| Input 100 tok · Output 5 tok| Context 32K / 128K · 25%')
+      .toBe('Cache hit 90.00%| Hit 9.00M · Miss 1.00M · Output 0.50M| Context 32K / 128K · 25.0%')
   })
 
   it('drops every token group when no projection is composed', () => {
@@ -278,7 +278,7 @@ describe('StatsLine', () => {
       sessionStats: sessionStats({ turns: 10, steps: 89 }),
     })} />)
     expect(view.container.textContent)
-      .toBe('10 turns · 89 steps| Cache hit 90%| Input 100 tok · Output 5 tok')
+      .toBe('10 turns · 89 steps| Cache hit 90%| Hit 9.00M · Miss 1.00M · Output 0.50M')
   })
 
   it('treats a defined zero-count projection as empty, not as fallback', () => {
@@ -312,7 +312,7 @@ describe('StatsLine', () => {
       sessionStats: sessionStats({ turns: 7, steps: 44 }),
     })} />)
     expect(view.container.textContent)
-      .toBe('7 turns · 44 steps| Cache hit 90%| Input 100 tok · Output 5 tok')
+      .toBe('7 turns · 44 steps| Cache hit 90%| Hit 9.00M · Miss 1.00M · Output 0.50M')
   })
 
   it('renders whole-log wall times and speeds from the projection, not the loaded window', () => {
@@ -328,7 +328,7 @@ describe('StatsLine', () => {
       }),
     })} />)
     expect(view.container.textContent).toBe(
-      '200 turns · 200 steps| LLM 1m40s · Tool call 1m2s| TTFT avg 0.8s · 20 tok/s| Cache hit 90%| Input 100 tok · Output 5 tok',
+      '200 turns · 200 steps| LLM 1m40s · tools 1m2s| TTFT 0.8s · TPS 20.0| Cache hit 90.00%| Hit 9.00M · Miss 1.00M · Output 0.50M',
     )
   })
 
@@ -344,14 +344,14 @@ describe('StatsLine', () => {
     const { source } = makeSource({ nodes: [assistant(1, 1)] })
     const view = render(<StatsLine {...props(source, {
       tokenUsage: {
-        uncachedInputTokens: 10,
+        uncachedInputTokens: 10_000_000,
         outputTokens: 7,
-        cacheReadTokens: 90,
-        cacheWriteTokens: 100,
+        cacheReadTokens: 90_000_000,
+        cacheWriteTokens: 100_000_000,
       },
     })} />)
     expect(view.container.textContent)
-      .toBe('1 turns · 1 steps| Cache hit 45%| Input 200 tok · Output 7 tok')
+      .toBe('1 turns · 1 steps| Cache hit 45.00%| Hit 90.00M · Miss 110.00M · Output 0.00M')
   })
 
   it('renders ZERO times during streaming chunk frames (RFC hard acceptance)', () => {

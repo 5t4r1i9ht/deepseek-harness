@@ -8,12 +8,11 @@ import type { UseProjection } from '@deepseek-ai/dsh-api-session-controller/clie
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: merges the sessionStats key into SessionProjectionMap for useProjection.
 import type {} from '@deepseek-ai/dsh-session-stats/client'
-import type { TokenUsageProjection } from '@deepseek-ai/dsh-token-meter/client'
+import type { ContextPressureProjection, TokenUsageProjection } from '@deepseek-ai/dsh-token-meter/client'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import type { ChatSnapshot } from '../contract/snapshot.ts'
-import { formatTokensPerSecond } from './message-chrome.ts'
 import { assistantStepReading } from '../contract/turn-metrics.ts'
-import { formatCacheHitPercent, formatTokens } from './token-format.ts'
+import { formatTokens } from './token-format.ts'
 import css from './StatsLine.module.css'
 
 interface WindowStats {
@@ -94,15 +93,34 @@ export function formatDuration(ms: number, t: ChatViewSlotProps['t']): string {
 }
 
 /**
- * Display-ready cache-hit share of prompt-side input over the whole durable log.
+ * One-decimal seconds figure for the TTFT group (always carries the tenth,
+ * so 2s renders as 2.0s).
+ * @param ms - latency in milliseconds.
+ * @returns display string.
+ */
+function formatLatencyTenths(ms: number): string {
+  return `${(ms / 1_000).toFixed(1)}s`
+}
+
+/**
+ * Token figure fixed to millions with two decimals (78.90M).
+ * @param n - token count.
+ * @returns display string.
+ */
+function formatTokensM(n: number): string {
+  return `${(n / 1_000_000).toFixed(2)}M`
+}
+
+/**
+ * Cache-hit share of prompt-side input over the whole durable log.
  * @param usage - the session's token-usage projection value.
- * @returns integer text when integer rounding stays below 100, otherwise the
- * minimum decimal precision that still rounds below 100; a full hit returns
- * 100, and no billed input returns null.
+ * @returns the percent fixed to two decimals, or null when no input was billed.
  */
 export function cacheHitPercent(usage: TokenUsageProjection): string | null {
   const denominator = billedInputTokens(usage)
-  return formatCacheHitPercent(usage.cacheReadTokens, denominator)
+  return denominator === 0
+    ? null
+    : (usage.cacheReadTokens / denominator * 100).toFixed(2)
 }
 
 /**
@@ -112,6 +130,35 @@ export function cacheHitPercent(usage: TokenUsageProjection): string | null {
  */
 export function billedInputTokens(usage: TokenUsageProjection): number {
   return usage.uncachedInputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
+}
+
+interface ContextOccupancy {
+  percent: number
+  usedTokens: number
+  contextWindow: number
+}
+
+/**
+ * Approximate context occupancy. The numerator is `projectedTokens` — the
+ * provider sample carried forward over the surface's movement since — so
+ * compaction shows immediately instead of waiting for the next request to
+ * report usage; it falls back to the bare sample only for a log whose
+ * projection predates that field. Unrounded so each reader formats its own
+ * precision (ContextMeter rounds to whole percents; the stats line carries
+ * one decimal).
+ * @param pressure - the session's context-pressure projection value.
+ * @returns occupancy with its numerator and denominator, or null until both values are known.
+ */
+export function contextOccupancy(
+  pressure: ContextPressureProjection | undefined,
+): ContextOccupancy | null {
+  const usedTokens = pressure?.projectedTokens ?? pressure?.pressureTokens
+  if (usedTokens === undefined || pressure?.contextWindow === undefined) return null
+  return {
+    percent: Math.min(100, usedTokens / pressure.contextWindow * 100),
+    usedTokens,
+    contextWindow: pressure.contextWindow,
+  }
 }
 
 /** Props: the conversation-snapshot selector plus the projection read seat. */
@@ -125,6 +172,7 @@ export interface StatsLineProps {
 export const StatsLine = memo(function StatsLine({ useChat, useProjection, t }: StatsLineProps) {
   const settledNodes = useChat(s => s.legacy.nodes)
   const usage = useProjection('tokenUsage')
+  const pressure = useProjection('contextPressure')
   // Every figure rides the durable sessionStats projection, so paging and
   // compaction cannot change any of them; an assembly without the unit falls
   // back to the window-scoped fold wholesale (same field names), paid only
@@ -141,17 +189,15 @@ export const StatsLine = memo(function StatsLine({ useChat, useProjection, t }: 
     if (durations.length > 0) groups.push(durations.join(' · '))
     const speeds: string[] = []
     if (stats.ttftSteps > 0) {
-      speeds.push(t('stats.ttftAverage', { duration: formatDuration(stats.ttftMs / stats.ttftSteps, t) }))
+      speeds.push(t('stats.ttftAverage', { duration: formatLatencyTenths(stats.ttftMs / stats.ttftSteps) }))
     }
     if (stats.decodeMs > 0) {
       speeds.push(t('stats.tokensPerSecond', {
-        throughput: formatTokensPerSecond(stats.decodeTokens / (stats.decodeMs / 1_000)),
+        throughput: (stats.decodeTokens / (stats.decodeMs / 1_000)).toFixed(1),
       }))
     }
     if (speeds.length > 0) groups.push(speeds.join(' · '))
   }
-  // Context occupancy deliberately lives on the composer's ContextMeter ring,
-  // not here — one home per fact.
   // Billing rides the durable projection, so these survive paging and
   // compaction. Gated on actual token activity: a session whose steps all
   // settled without billing (e.g. every request failed) shows its counts
@@ -160,9 +206,30 @@ export const StatsLine = memo(function StatsLine({ useChat, useProjection, t }: 
     && (billedInputTokens(usage) > 0 || usage.outputTokens > 0)) {
     const cacheHit = cacheHitPercent(usage)
     if (cacheHit !== null) groups.push(t('stats.cacheHit', { percent: cacheHit }))
-    groups.push(t('stats.tokens', {
-      input: formatTokens(billedInputTokens(usage), t),
-      output: formatTokens(usage.outputTokens, t),
+    const billedInput = billedInputTokens(usage)
+    // Split the prompt-side bucket into the cache-read share and everything
+    // billed fresh (uncached reads + cache writes), so the input figure is
+    // not a single opaque number.
+    groups.push(billedInput > 0
+      ? t('stats.tokensDetailed', {
+        hit: formatTokensM(usage.cacheReadTokens),
+        miss: formatTokensM(usage.uncachedInputTokens + usage.cacheWriteTokens),
+        output: formatTokensM(usage.outputTokens),
+      })
+      : t('stats.tokens', {
+        input: '0',
+        output: formatTokens(usage.outputTokens, t),
+      }))
+  }
+  // Context occupancy: the composer's ContextMeter ring carries the click-open
+  // breakdown; this group restates the same projected figure inline so the
+  // status row is self-contained.
+  const context = contextOccupancy(pressure)
+  if (context !== null) {
+    groups.push(t('stats.context', {
+      used: formatTokens(context.usedTokens, t),
+      total: formatTokens(context.contextWindow, t),
+      percent: context.percent.toFixed(1),
     }))
   }
   const line = groups.join(' | ')

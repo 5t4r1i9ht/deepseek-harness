@@ -86,7 +86,7 @@ export function ContextMeter({ useProjection, t }: ContextMeterProps) {
 
   if (context === null) return null
   const percent = context.percent
-  const reading = `${percent}%`
+  const reading = `${Math.round(percent)}%`
   const [headBefore = '', headAfter = ''] = t('context.aria', { percent: READING_SLOT })
     .split(READING_SLOT)
     .map(part => part.trim())
