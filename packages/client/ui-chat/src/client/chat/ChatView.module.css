@@ -10,9 +10,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  /* Sides = composer clearance + 16px: on narrow viewports the transcript
-     stays exactly 32px narrower than the input card (the shared width rule). */
-  padding: 16px calc(var(--dsh-composer-side-clearance) + 16px);
+  padding: 8px 16px;
   /* Inline-size query container: wide markdown tables size their breakout
      against this box's content width (100cqw in AssistantMarkdown's
      md-table-wide rule) — the CSS stand-in for deepsuite chat's JS-measured
@@ -32,13 +30,9 @@
   min-height: auto;
 }
 
-/* Message column: shared chat width (ConversationRoot --dsh-chat-content-width),
-   centered on the same axis as the input box (which caps at chat + 16px); the
-   scroller itself stays full-bleed. */
+/* Message column: full-bleed like the scroller, left-aligned. */
 .column {
-  max-width: var(--dsh-chat-content-width);
   width: 100%;
-  margin: 0 auto;
   display: flex;
   flex-direction: column;
 }
@@ -180,7 +174,9 @@
   height: 0;
   display: flex;
   justify-content: flex-end;
-  padding-right: max(0px, calc((100% - var(--dsh-chat-content-width)) / 2));
+  /* The chat flow is full-width now, so the button hugs the scroll area's
+     right edge at the transcript's own side padding. */
+  padding-right: 16px;
   pointer-events: none;
 }
 

@@ -40,7 +40,7 @@
      header buttons stay clickable. */
   z-index: 9;
   flex: none;
-  padding: 12px 28px 0 20px;
+  padding: 4px;
   border-bottom: 1px solid transparent;
 }
 
@@ -63,6 +63,7 @@
 }
 
 .titleRow {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0;
@@ -70,10 +71,13 @@
 }
 
 .titleCluster {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
-  flex: 1;
   align-items: center;
   gap: 10px;
+  max-width: 60%;
   min-width: 0;
 }
 
@@ -142,20 +146,22 @@
   flex: none;
   align-items: center;
   gap: 8px;
-  margin-left: 20px;
+  margin-left: auto;
 }
 
 .headerUtilities:empty {
   display: none;
 }
 
-/* figma Tab_Group 34:11441: 35px strip, gap 36, pad-left 8, tabs bottom-aligned. */
+/* View tabs ride the title row (left side) so the row stays one line tall;
+   the selected tab's underline sits on the header's bottom hairline. */
 .tabs {
   position: relative;
   z-index: 1;
   display: flex;
+  align-items: flex-end;
   gap: 36px;
-  margin-top: 4px;
+  align-self: stretch;
   padding-left: 8px;
 }
 

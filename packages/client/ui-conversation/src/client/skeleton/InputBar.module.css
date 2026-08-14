@@ -5,9 +5,9 @@
   align-items: center;
   /* Side pads ride the shared clearance (figma Input_Bottom drew L32/R32/B8;
      the sides narrow with the shared width axis); the bottom gradient mask
-     is owned by the chat scroller. No top pad: the composer stack's gap owns
-     the space above; the status strip still carries its own margin. */
-  padding: 0 var(--dsh-composer-side-clearance) 8px;
+     is owned by the chat scroller. No top or bottom pad: the composer
+     stack's gap owns the space above and the stats line sits flush below. */
+  padding: 0 var(--dsh-composer-side-clearance);
 }
 
 .hero {
@@ -38,7 +38,6 @@
      top pad on the card before .InputText. */
   gap: 12px;
   width: 100%;
-  max-width: var(--dsh-composer-card-max-width);
   padding-top: 10px;
   /* Input stroke: black/0.10 light, white/0.06 dark (figma darkmode note says
      the input border is one notch weaker than buttons) — exactly the
