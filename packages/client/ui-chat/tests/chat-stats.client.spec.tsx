@@ -9,7 +9,7 @@ import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
-import { StatsLine, deriveStats, formatDuration, type StatsLineProps } from '../src/client/chat/StatsLine.tsx'
+import { StatsLine, contextOccupancy, deriveStats, formatDuration, type StatsLineProps } from '../src/client/chat/StatsLine.tsx'
 import { formatTokens } from '../src/client/chat/token-format.ts'
 import { en, zh } from '../src/client/locale.ts'
 import { chatSnapshotFixture } from './chat-snapshot-fixture.client.ts'
@@ -168,7 +168,7 @@ describe('StatsLine', () => {
     const view = render(<StatsLine {...props(source)} />)
     // No timing on the fixture: the duration group drops out whole. Tokens come
     // from the projection, so paging the window cannot change them.
-    expect(view.container.textContent).toBe('1 turns · 1 steps| Cache hit 90%| Hit 9.00M · Miss 1.00M · Output 0.50M')
+    expect(view.container.textContent).toBe('1 turns · 1 steps| Cache hit 90.00%| Hit 9.00M · Miss 1.00M · Output 0.50M')
     const empty = makeSource()
     const emptyView = render(<StatsLine {...props(empty.source, {
       tokenUsage: { uncachedInputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
@@ -263,6 +263,24 @@ describe('StatsLine', () => {
       .toBe('Cache hit 90.00%| Hit 9.00M · Miss 1.00M · Output 0.50M| Context 32K / 128K · 25.0%')
   })
 
+  it('computes context occupancy only when both a numerator and capacity are known', () => {
+    // The projected figure wins: it is the provider sample carried forward over
+    // the surface's movement, so a compaction shows without waiting a request.
+    expect(contextOccupancy({ pressureTokens: 32_000, projectedTokens: 6_000, contextWindow: 128_000 }))
+      .toEqual({ percent: 4.6875, usedTokens: 6_000, contextWindow: 128_000 })
+    // A log whose projection predates the field still reads its bare sample.
+    expect(contextOccupancy({ pressureTokens: 32_000, contextWindow: 128_000 }))
+      .toEqual({ percent: 25, usedTokens: 32_000, contextWindow: 128_000 })
+    // A numerator without capacity has no denominator; capacity without a
+    // provider sample has no numerator yet, rather than a synthetic 0%.
+    expect(contextOccupancy({ pressureTokens: 32_000 })).toBeNull()
+    expect(contextOccupancy({ contextWindow: 128_000 })).toBeNull()
+    expect(contextOccupancy(undefined)).toBeNull()
+    // Capacity and the sample are independent last-wins fields, so a model
+    // switch can pair a smaller new window with the previous route's prompt.
+    expect(contextOccupancy({ pressureTokens: 300_000, contextWindow: 128_000 })?.percent).toBe(100)
+  })
+
   it('drops every token group when no projection is composed', () => {
     const { source } = makeSource({ nodes: [assistant(1, 1)] })
     const view = render(<StatsLine {...props(source, {})} />)
@@ -278,7 +296,7 @@ describe('StatsLine', () => {
       sessionStats: sessionStats({ turns: 10, steps: 89 }),
     })} />)
     expect(view.container.textContent)
-      .toBe('10 turns · 89 steps| Cache hit 90%| Hit 9.00M · Miss 1.00M · Output 0.50M')
+      .toBe('10 turns · 89 steps| Cache hit 90.00%| Hit 9.00M · Miss 1.00M · Output 0.50M')
   })
 
   it('treats a defined zero-count projection as empty, not as fallback', () => {
@@ -312,7 +330,7 @@ describe('StatsLine', () => {
       sessionStats: sessionStats({ turns: 7, steps: 44 }),
     })} />)
     expect(view.container.textContent)
-      .toBe('7 turns · 44 steps| Cache hit 90%| Hit 9.00M · Miss 1.00M · Output 0.50M')
+      .toBe('7 turns · 44 steps| Cache hit 90.00%| Hit 9.00M · Miss 1.00M · Output 0.50M')
   })
 
   it('renders whole-log wall times and speeds from the projection, not the loaded window', () => {
