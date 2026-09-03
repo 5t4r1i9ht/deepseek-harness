@@ -1,0 +1,108 @@
+name: Release question notifications plugin
+
+on:
+  push:
+    tags: ['question-notifications-v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: pwsh
+
+env:
+  DSH_TELEMETRY_DISABLED: '1'
+
+jobs:
+  pack:
+    runs-on: windows-2025
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Verify plugin tag
+        id: version
+        run: |
+          $version = (Get-Content packages/client/ui-question-notifications/package.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -cne "question-notifications-v$version") {
+            throw "The release tag must match the notification package version: $version"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Pack plugin
+        run: pnpm --dir packages/client/ui-question-notifications pack --pack-destination ../../../.artifacts/question-notifications
+
+      - name: Prepare release attachments
+        run: |
+          $assets = '.artifacts/question-notifications'
+          Copy-Item docs/user/guide/question-notifications-install.md $assets
+          Copy-Item docs/user/guide/question-notifications-install.zh.md $assets
+          $checksums = Get-ChildItem -LiteralPath $assets -File | Where-Object Name -ne SHA256SUMS | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          }
+          Set-Content -LiteralPath "$assets/SHA256SUMS" -Value $checksums -Encoding utf8NoBOM
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: question-notifications-release
+          path: .artifacts/question-notifications/*
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: pack
+    runs-on: windows-2025
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: question-notifications-release
+          path: release-assets
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLUGIN_VERSION: ${{ needs.pack.outputs.version }}
+        run: |
+          $download = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:GITHUB_REF_NAME"
+          $notes = @"
+          Browser notifications for agent questions and plan reviews. Enable them in Settings → General after installation.
+
+          当 Agent 提问或请求计划审阅时，弹出浏览器通知。安装后在“设置 → 通用设置”中启用。
+
+          Requires DSH **$env:PLUGIN_VERSION**, Node.js **^22.19.0 || >=24.0.0**, and **pnpm** on PATH. DSH **0.1.1-rc.2** is unsupported.
+
+          - [中文安装指南]($download/question-notifications-install.zh.md)
+          - [English installation guide]($download/question-notifications-install.md)
+          - [SHA-256 checksums]($download/SHA256SUMS)
+
+          安装指南作为独立 Release 附件提供，不包含在插件压缩包中。Installation guides are separate release attachments, outside the plugin archive.
+          "@
+          Set-Content release-notes.md $notes -Encoding utf8NoBOM
+          $assets = @(Get-ChildItem release-assets -File | ForEach-Object FullName)
+          gh release create $env:GITHUB_REF_NAME @assets --repo $env:GITHUB_REPOSITORY --verify-tag --prerelease --latest=false --title "Browser question notifications $env:PLUGIN_VERSION" --notes-file release-notes.md

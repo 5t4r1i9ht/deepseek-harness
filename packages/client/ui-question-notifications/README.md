@@ -1,6 +1,6 @@
 ---
 description: "Browser notifications for pending agent questions, with a General-settings permission control."
-kind: "package-reference"
+kind: "package-bundle"
 ---
 
 # @deepseek-ai/dsh-client-ui-question-notifications
@@ -25,17 +25,19 @@ Receive a browser notification when an agent needs your answer, including a plan
 <a id="use-this-package"></a>
 ## Use this package
 
-The Web profile includes this plugin. In Settings → General, choose **Enable notifications** and accept the browser prompt. Browser settings own permission for this site; revoking that permission disables delivery. Unsupported browsers and blocked permission display an explanation in the same row.
+The source-tree Web profile includes this plugin. For the npm-distributed DSH `0.1.2-rc.1`, use the independent installation guides attached to the [GitHub Release](https://github.com/5t4r1i9ht/deepseek-harness/releases/tag/question-notifications-v0.1.2-rc.1). The guides are separate attachments, outside the plugin archive. In Settings → General, choose **Enable notifications** and accept the browser prompt.
 
-### Minimal configuration
+### Profile layer
 
-Mount this row beside the Web question UI and standard Client services:
+The package declares `dsh.bundle.patch`, so `dsh plugin` activates its [patch file](cordis.patch.yml) when installed into a Web profile:
 
 ```yaml
-- name: '@deepseek-ai/dsh-client-ui-question-notifications'
+- insert:
+    - id: ui-question-notifications
+      name: '@deepseek-ai/dsh-client-ui-question-notifications'
 ```
 
-There are no plugin configuration fields. Notifications follow browser permission, including permission already granted before the page opens.
+There are no plugin configuration fields. Notifications follow browser permission, including permission already granted before the page opens. Revoking that permission disables delivery; unsupported browsers and blocked permission show an explanation in the settings row. Install this layer only when the composition does not already mount the plugin.
 
 ### Notification lifetime
 
@@ -53,6 +55,15 @@ The plugin observes `uiSession.pendingInteractions` and uses `sessions.open()` f
 
 No runtime invariant companion is published: the package owns browser effects and permission presentation, with no independent runtime observations to reconcile. The notification lifecycle and plugin disposal are covered by the package tests; the assembled question replay exercises the permission gesture, notification content, and click navigation.
 
+Build and pack from the repository root to produce the GitHub Release archive:
+
+```sh
+pnpm run build
+pnpm --dir packages/client/ui-question-notifications pack --pack-destination ../../../.artifacts/question-notifications
+```
+
+The [release workflow](../../../.github/workflows/release-question-notifications.yml) runs when a `question-notifications-v<package-version>` tag is pushed. It checks the tag against the package version, builds the archive, and publishes a prerelease with the `.tgz`, `SHA256SUMS`, and both language files of the [installation guide](../../../docs/user/guide/question-notifications-install.md) as separate attachments. The archive contains the Host entry, browser bundle, type declarations, activation patch, and package READMEs. The browser bundle's module id remains the package name.
+
 </details>
 
 -----
@@ -63,6 +74,7 @@ No runtime invariant companion is published: the package owns browser effects an
 - [Question UI](../ui-user-questions/README.md) — answer collection.
 - [Session UI](../ui-session/README.md) — effective pending interactions.
 - [Web Client architecture](../../../docs/subsystems/web-client.md) — plugin composition.
+- [Package and install a plugin](../../../docs/user/develop/basic/publish.md) — profile bundle installation.
 - [Browser permission requirements](https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API/Using_the_Notifications_API) — secure contexts and user gestures.
 
 -----
@@ -82,6 +94,7 @@ No effect: notification permission, delivery, and clicks do not change model req
 
 Browser and page lifetimes constrain delivery:
 
+- DSH `0.1.2-rc.1` supplies the required Client services. DSH `0.1.1-rc.2` is unsupported.
 - The page must remain open. There is no push service, service worker notification, or closed-page delivery.
 - Delivery requires a secure context and support for the desktop `Notification` constructor. Browser or operating-system settings may suppress alerts even after permission is granted.
 - Deduplication is local to one plugin instance; separate tabs, page reloads, or plugin reloads can notify the same outstanding question again.

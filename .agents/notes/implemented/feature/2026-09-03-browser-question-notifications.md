@@ -14,6 +14,8 @@ An agent can wait for an answer while the user is in another tab or application.
 
 Notifications contain generic localized text, avoiding publication of question content on the desktop. Clicking opens the requesting Session without answering it. Each request object notifies once per plugin lifetime; settlement, effective-request replacement, or plugin disposal closes the notification. A permission response arriving after disposal has no side effect.
 
+The same package is an installable profile bundle: its patch inserts the notification row, and its prebuilt archive contains both runtime entries. GitHub Release distribution keeps the installation guides as separate attachments. Installation and startup instructions pin DSH `0.1.2-rc.1`, which provides the required Client services; the `0.1.1-rc.2` client is unsupported. Keeping the existing package name preserves the browser module id without a second distribution implementation.
+
 The [pending-interaction ownership decision](../architecture/2026-08-20-client-session-conversation-ownership.md) remains authoritative. This feature adds a consumer and supersedes none of its ownership or lifetime rules.
 
 ## Alternatives considered

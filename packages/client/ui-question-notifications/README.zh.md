@@ -1,6 +1,6 @@
 ---
 description: "为待回答的 agent 问题发送浏览器通知，并在通用设置中提供权限控制。"
-kind: "package-reference"
+kind: "package-bundle"
 ---
 
 # @deepseek-ai/dsh-client-ui-question-notifications
@@ -25,17 +25,19 @@ agent（智能体）需要你回答问题时，接收浏览器通知，包括计
 <a id="use-this-package"></a>
 ## 使用本包
 
-Web profile（配置档）包含此插件。在“设置 → 通用设置”中选择**启用通知**，并接受浏览器提示。浏览器设置管理此网站的权限；撤销权限会停止通知发送。不支持的浏览器和被屏蔽的权限会在同一设置项中显示说明。
+源码树的 Web profile（配置档）包含此插件。使用通过 npm 分发的 DSH `0.1.2-rc.1` 时，请使用 [GitHub Release](https://github.com/5t4r1i9ht/deepseek-harness/releases/tag/question-notifications-v0.1.2-rc.1) 附件中的独立安装指南。指南作为单独附件提供，不在插件压缩包内。在“设置 → 通用设置”中选择**启用通知**，并接受浏览器提示。
 
-### 最小配置
+### Profile 层
 
-将以下条目与 Web 提问 UI 及标准 Client（客户端）服务一起挂载：
+本包声明了 `dsh.bundle.patch`，因此通过 `dsh plugin` 安装到 Web profile 时，会启用它的 [patch 文件](cordis.patch.yml)：
 
 ```yaml
-- name: '@deepseek-ai/dsh-client-ui-question-notifications'
+- insert:
+    - id: ui-question-notifications
+      name: '@deepseek-ai/dsh-client-ui-question-notifications'
 ```
 
-本插件没有配置字段。通知遵循浏览器权限，包括页面打开前已经授予的权限。
+本插件没有配置字段。通知遵循浏览器权限，包括页面打开前已经授予的权限。撤销权限会停止发送通知；不支持的浏览器和被屏蔽的权限会在设置项中显示说明。仅在组合尚未挂载此插件时安装该层。
 
 ### 通知生命周期
 
@@ -53,6 +55,15 @@ Web profile（配置档）包含此插件。在“设置 → 通用设置”中�
 
 本包不发布运行时 invariant（不变量）伴随入口：它拥有浏览器副作用和权限呈现，没有需要相互核对的独立运行时观测。包内测试覆盖通知生命周期和插件资源释放；完整提问回放覆盖权限点击、通知内容和点击导航。
 
+从仓库根目录构建并打包，生成 GitHub Release 压缩包：
+
+```sh
+pnpm run build
+pnpm --dir packages/client/ui-question-notifications pack --pack-destination ../../../.artifacts/question-notifications
+```
+
+推送 `question-notifications-v<package-version>` 标签会运行[发布工作流](../../../.github/workflows/release-question-notifications.yml)。它核对标签与包版本、构建压缩包，并创建预发布版本，将 `.tgz`、`SHA256SUMS` 和[安装指南](../../../docs/user/guide/question-notifications-install.zh.md)的两种语言文件作为独立附件发布。压缩包包含 Host（宿主）入口、浏览器 bundle、类型声明、启用 patch 和包 README。浏览器 bundle 的模块 id 与包名一致。
+
 </details>
 
 -----
@@ -63,6 +74,7 @@ Web profile（配置档）包含此插件。在“设置 → 通用设置”中�
 - [提问 UI](../ui-user-questions/README.zh.md)——收集回答。
 - [Session UI](../ui-session/README.zh.md)——当前生效的待处理交互。
 - [Web Client 架构](../../../docs/subsystems/web-client.zh.md)——插件组合。
+- [打包与安装插件](../../../docs/user/develop/basic/publish.zh.md)——profile 组合包安装。
 - [浏览器权限要求](https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API/Using_the_Notifications_API)——安全上下文和用户操作。
 
 -----
@@ -82,6 +94,7 @@ Web profile（配置档）包含此插件。在“设置 → 通用设置”中�
 
 浏览器与页面生命周期限制通知发送：
 
+- DSH `0.1.2-rc.1` 提供所需的 Client（客户端）服务。DSH `0.1.1-rc.2` 不受支持。
 - 页面必须保持打开。本插件没有推送服务、service worker 通知或关闭页面后的通知发送。
 - 发送通知需要安全上下文，并支持桌面 `Notification` 构造函数。即使已经授权，浏览器或操作系统设置仍可能抑制提醒。
 - 去重仅作用于单个插件实例；不同标签页、页面重载或插件重载可能再次提醒同一个未回答问题。
