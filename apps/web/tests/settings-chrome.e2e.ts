@@ -29,6 +29,13 @@ const DIALOG_EN_EXPECTED = join(SNAPSHOT_DIR, 'dialog-en.expected.md')
 const PLUGIN_ROW_SELECTOR = '[data-plugin-entry$="ui-settings"]'
 const MODE = webSnapshotMode()
 
+async function useDefaultNotificationPermission(page: Page): Promise<void> {
+  // Permission is browser-owned input; its platform default must not choose the golden.
+  await page.addInitScript(() => {
+    Object.defineProperty(Notification, 'permission', { value: 'default' })
+  })
+}
+
 describe('web e2e: settings modal and General preferences', () => {
   let scaffold: WebScaffold
   let browser: Browser
@@ -41,6 +48,7 @@ describe('web e2e: settings modal and General preferences', () => {
     // Chinese browser: the shared page asserts the localized settings surface
     // the client derives from it (the English default has its own spec below).
     page = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
+    await useDefaultNotificationPermission(page)
     tripwire = watchConsole(page)
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
@@ -604,6 +612,7 @@ describe('web e2e: settings modal and General preferences', () => {
     // than to Chinese.
     const fresh = await launchWebScaffold({})
     const frPage = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: 'fr-FR' })
+    await useDefaultNotificationPermission(frPage)
     const frTripwire = watchConsole(frPage)
     onTestFailed(() => saveFailureShot(frPage, 'web-e2e-settings-unshipped-language'))
     try {

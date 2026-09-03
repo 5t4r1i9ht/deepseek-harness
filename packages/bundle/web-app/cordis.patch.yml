@@ -302,6 +302,9 @@
     - id: ui-user-questions
       name: '@deepseek-ai/dsh-client-ui-user-questions'
 
+    - id: ui-question-notifications
+      name: '@deepseek-ai/dsh-client-ui-question-notifications'
+
     - id: ui-trajectory
       name: '@deepseek-ai/dsh-client-ui-trajectory'
 

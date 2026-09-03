@@ -48,3 +48,6 @@
   - button "排队发送":
     - text: 排队发送
     - img
+  - text: 提问通知
+  - status: Agent 需要你回答问题时，接收浏览器通知。
+  - button "启用通知"

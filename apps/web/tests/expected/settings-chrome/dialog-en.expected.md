@@ -48,3 +48,6 @@
   - button "Queue":
     - text: Queue
     - img
+  - text: Question notifications
+  - status: Get a browser notification when an agent needs your answer.
+  - button "Enable notifications"

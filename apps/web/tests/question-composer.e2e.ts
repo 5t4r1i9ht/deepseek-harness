@@ -28,12 +28,24 @@ const FIXTURE = join(SNAPSHOT_DIR, 'session.jsonl')
 const UI_EXPECTED = join(SNAPSHOT_DIR, 'ui.expected.md')
 const SIDEBAR_EXPECTED = join(SNAPSHOT_DIR, 'sidebar.expected.md')
 const COMPOSED_EXPECTED = join(SNAPSHOT_DIR, 'composed.expected.md')
+const NOTIFICATION_EXPECTED = join(SNAPSHOT_DIR, 'notification.expected.md')
 // Final golden: the answered transcript — the question resolved into its tool
 // round trip and the final reply, the state the composer goldens cannot see.
 const ANSWERED_EXPECTED = join(SNAPSHOT_DIR, 'answered.expected.md')
 const CANCELLED_EXPECTED = join(SNAPSHOT_DIR, 'cancelled.expected.md')
 const ANSWERED_EXPANDED_EXPECTED = join(SNAPSHOT_DIR, 'answered-expanded.expected.md')
 const MODE = webSnapshotMode()
+
+declare global {
+  interface Window {
+    questionNotificationProbe: {
+      title: string
+      body: string
+      closed: boolean
+      onclick: ((event: Event) => void) | null
+    }[]
+  }
+}
 const CANCELLED_SEED_ID = 'ask-question-cancelled-row-web-e2e'
 
 // The composer's own growth cap, in text lines (QuestionComposer.module.css
@@ -130,11 +142,40 @@ describe('web e2e: resident question composer round trip', () => {
     scaffold.ctx.on('session/event', (_session, event: SessionEvent) => { sessionEvents.push(event) })
     browser = await chromium.launch()
     page = await newEnglishPage(browser)
+    // The desktop notification is the external platform effect; the model,
+    // Remote waterfall, question UI, and notification plugin remain assembled.
+    await page.addInitScript(() => {
+      window.questionNotificationProbe = []
+      Object.defineProperty(window, 'Notification', {
+        value: class {
+          static permission = 'default'
+          static async requestPermission() {
+            this.permission = 'granted'
+            return 'granted'
+          }
+
+          closed = false
+          onclick: ((event: Event) => void) | null = null
+          readonly body: string
+
+          constructor(readonly title: string, options: NotificationOptions) {
+            this.body = options.body ?? ''
+            window.questionNotificationProbe.push(this)
+          }
+
+          close() { this.closed = true }
+        },
+      })
+    })
     tripwire = watchConsole(page)
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
     // Fresh world: connect a Workspace so the composer scenarios start live.
     await connectFreshWorkspace(page, scaffold.workspaceCwd)
+    await page.getByRole('button', { name: 'Settings', exact: true }).click()
+    await page.getByRole('button', { name: 'Enable notifications', exact: true }).click()
+    await page.getByRole('button', { name: 'Enabled', exact: true }).waitFor()
+    await page.keyboard.press('Escape')
   }, 120_000)
 
   afterAll(async () => {
@@ -159,6 +200,12 @@ describe('web e2e: resident question composer round trip', () => {
     const composer = page.locator('[data-question-key]')
     await composer.waitFor({ timeout: MODE === 'record' ? 120_000 : 30_000 })
     await expect.poll(() => composer.getByText('Which color do you prefer?').count(), { timeout: 10_000 }).toBeGreaterThan(0)
+    await expect.poll(() => page.evaluate(() => window.questionNotificationProbe.length)).toBe(1)
+    const notification = await page.evaluate(() => {
+      const value = window.questionNotificationProbe[0]!
+      return `${value.title}\n${value.body}`
+    })
+    if (MODE !== 'record') await compareOrRefreshGolden(NOTIFICATION_EXPECTED, notification, MODE)
 
     const selectedRow = page.locator('[role="treeitem"][aria-selected="true"]')
     await expect.poll(() => selectedRow.locator('[data-state="warning"]').count(), { timeout: 10_000 }).toBe(1)
@@ -259,8 +306,10 @@ describe('web e2e: resident question composer round trip', () => {
       await page.getByRole('button', { name: 'New session', exact: true }).last().click()
       await page.getByText('New Session', { exact: true }).waitFor({ timeout: 15_000 })
       await expect.poll(() => composer.count(), { timeout: 10_000 }).toBe(0)
-      await originalRow.click()
+      await page.evaluate(() => { window.questionNotificationProbe[0]!.onclick!(new Event('click')) })
       await composer.waitFor({ timeout: 15_000 })
+      expect(await originalRow.getAttribute('aria-selected')).toBe('true')
+      expect(await page.evaluate(() => window.questionNotificationProbe.map(item => item.closed))).toEqual([true])
       expect(await blue.getAttribute('aria-checked')).toBe('true')
       expect(await custom.inputValue()).toBe('Include accessibility notes')
 
@@ -290,6 +339,7 @@ describe('web e2e: resident question composer round trip', () => {
     await expect.poll(() => page.getByText('DONE', { exact: true }).count(), { timeout: 15_000 }).toBeGreaterThanOrEqual(1)
     // Composer gone; regular input restored.
     expect(await page.locator('[data-question-key]').count()).toBe(0)
+    expect(await page.evaluate(() => window.questionNotificationProbe.map(item => item.closed))).toEqual([true])
     expect(await selectedRow.locator('[data-state="warning"]').count()).toBe(0)
     await expect.poll(() => page.locator('[data-composer-input]').first().isEnabled(), { timeout: 10_000 }).toBe(true)
     // The default golden pins Compact mode before process disclosure.
@@ -418,6 +468,7 @@ describe.skipIf(MODE === 'record')('web e2e: cancelled question transcript', () 
       'answered.expected.md',
       'cancelled.expected.md',
       'answered-expanded.expected.md',
+      'notification.expected.md',
     ])
   })
 })
